@@ -205,3 +205,53 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+*.DS_Store
+
+#Quartus output files
+**/output_files*
+
+#reconfig mif files
+**/reconfig_mif
+
+#Quartus db-files
+**/db
+**/incremental_db
+
+#Quartus PLLJ_PLLSPE_INFO-files
+**/PLLJ_PLLSPE_INFO.txt
+
+#DSE
+**/dse
+
+#Tmp-files
+**/greybox_tmp
+
+#Build
+**/build/history
+build/LocalConfig_*
+build/
+
+*.cmp
+*.bak
+**/.qsys_edit
+*.zip
+*.pfw
+*.udp
+*.jic
+**/simulation
+
+#################
+## Quartus
+#################
+
+#Tmp-files
+**/greybox_tmp/**/*
+
+
+#Qsys edit files
+*.qsys_edit
+
+#Quartus II Workspace File (.qws)
+*.qws
+*.rpt
