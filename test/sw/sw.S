@@ -1,0 +1,46 @@
+.file "sw.S"
+
+.equ MIP.MSIP, 0x8
+.equ MIE.MSIE, 0x8
+
+.equ MIP.MTIP, 0x80
+.equ MIE.MTIE, 0x80
+
+.equ MIP.MEIP, 0x800
+.equ MIE.MEIE, 0x800
+
+.text
+.global _boot
+
+_boot:
+    la     a0, handler
+    csrw   mtvec, a0
+    li	   a0, MIE.MTIE
+    csrw   mie,a0
+    csrrsi a0,mstatus,8
+	addi   a0, zero, 10
+    addi   a1, zero, 16
+    sw     zero, 0(a1)
+    
+loop:
+	lw   a2, 0(a1)
+    addi a2, a2, 1
+    sw   a2, 0(a1)
+
+.option rvc
+    c.lw   a3, 0(a1)
+
+    beq  a3, a0, exit_loop
+    j    loop
+
+exit_loop:
+	addi a4, zero, 1
+    addi a5, zero, 0x3c
+    sb   a4, 3(a5)
+halt:
+	j    halt
+
+handler:
+    addi	t1, t1, 1
+    csrr	t2, mcause
+    mret

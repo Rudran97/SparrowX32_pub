@@ -1,0 +1,94 @@
+/* When a fast irq is detected, the core will jump to the address
+** provided by the Interrupt controller (piv_fast_irq_vect) if
+** mtvec.MODE = 2.
+**
+** Inside the fast IRQ handler, any modification made to the GPRs
+** will be restored once the mret instruction is executed. Thus,
+** any software backup of registers is not necessary.
+**
+** If exceptions (including ecall and ebreak) and other interrupts that occur in
+** mtvec.MODE = 2, the core will jump to the regular exception handler
+** provided by mtvec.BASE.
+** 
+*/
+
+.file "sw.S"
+
+.equ MIP.MSIP, 0x8
+.equ MIE.MSIE, 0x8
+
+.equ MIP.MTIP, 0x80
+.equ MIE.MTIE, 0x80
+
+.equ MIP.MEIP, 0x800
+.equ MIE.MEIE, 0x800
+
+.text
+.global _boot
+
+_boot:
+    la     a0, handler
+    ori    a0, a0, 2      /* MODE 2 : fast IRQ Vectored */
+    csrw   mtvec, a0
+    li	   a0, MIE.MTIE
+    csrw   mie,a0
+    mul    s0, a0, a1
+    csrrsi a0,mstatus,8
+	addi   a0, zero, 10
+    addi   a4, zero, 20
+    addi   a1, zero, 16
+    sw     zero, 0(a1)
+    sw     a0,   0(a4)    /* store 10 and address 0x14 */
+    
+loop:
+	lw   a2, 0(a1)
+    addi a0, a2, 1
+    sw   a0, 0(a1)
+
+    lw   a0, 0(a4)
+.option rvc
+    c.lw   a3, 0(a1)
+.option norvc
+
+    beq  a3, a0, exit_loop
+    j    loop
+
+exit_loop:
+	addi a4, zero, 1
+    addi a5, zero, 0x3c
+    sb   a4, 3(a5)
+halt:
+	j    halt
+
+.balign 64
+
+handler:
+    csrr	t2, mcause
+    addi    t4, zero, 3
+    bne     t2, t4, not_ebreak /* exit if the exception is not ebreak */
+    addi	t1, t1, 1
+    li      t3, MIP.MTIP
+    csrc	mip, t3
+is_ebreak:
+    csrr    t2, mtval
+    andi    t3, t2, 1
+    beqz    t3, compressed_ebreak
+    csrr    t2, mepc
+    addi    t2, t2, 4
+    csrw    mepc, t2
+    mret
+compressed_ebreak:
+    csrr    t2, mepc
+    addi    t2, t2, 2
+    csrw    mepc, t2
+    mret
+not_ebreak:
+    mret
+
+.balign 64
+
+fast_irq_handler:
+    /* Any value written in GPR will be only written in IRQ regfile instead of regular */
+    addi    s11, s11, 1
+    addi    a3,  zero, -1
+    mret
