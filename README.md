@@ -4,7 +4,8 @@ This is the public repository version of SparrowX32.
 
 SparrowX32 is a 32-bit RISC-V CPU core written primarily in VHDL. It is designed to simplify the integration of custom hardware modules for a wide range of applications. The modular pipeline architecture allows users to extend the core by adding their own hardware components, enabling flexible feature expansion.
 
-A reference design implementation of a microcontroller soc using the SparrowX32 core is provided: ___
+A reference design implementation of a microcontroller soc using the SparrowX32 core is provided: [pearl3](https://github.com/Rudran97/pearl3_pub.git).
+
 Also refer to ___ for software and library support for the reference design implementation.
 
 ## Block Diagram
