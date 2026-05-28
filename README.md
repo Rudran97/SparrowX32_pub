@@ -7,6 +7,10 @@ SparrowX32 is a 32-bit RISC-V CPU core written primarily in VHDL. It is designed
 A reference design implementation of a microcontroller soc using the SparrowX32 core is provided: ___
 Also refer to ___ for software and library support for the reference design implementation.
 
+## Block Diagram
+
+![Alt text](docs/sparrowx32_arch.png)
+
 ## Design Features
 
 The following features are supported or implemented:
