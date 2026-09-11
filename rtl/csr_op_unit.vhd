@@ -99,14 +99,14 @@ architecture rtl of csr_op_unit is
     signal sv_reg_MINSTRET  : std_logic_vector(31 downto 0);
     signal sv_val_MINSTRET  : std_logic_vector(31 downto 0);
 
-    signal su_reg_TSELECT   : unsigned(0 downto 0); -- Only supports 2 trigger modules so 1 bit is enough
-    signal su_val_TSELECT   : unsigned(0 downto 0);
+    signal su_reg_TSELECT   : unsigned(2 downto 0); -- Only supports 8 trigger modules
+    signal su_val_TSELECT   : unsigned(2 downto 0);
 
-    type tar_TRIG is array (0 to 1) of tr_trig_module; -- 2 trigger modules
+    type tar_TRIG is array (0 to 7) of tr_trig_module; -- 8 trigger modules
     signal star_reg_TRIG    : tar_TRIG;
     signal star_val_TRIG    : tar_TRIG;
 
-    type tal_trigger_match is array (0 to 1) of std_logic;
+    type tal_trigger_match is array (0 to 7) of std_logic;
     signal stal_trigger_match : tal_trigger_match;
 
     signal sv_reg_DCSR      : std_logic_vector(31 downto 0);
@@ -166,7 +166,7 @@ begin
             when cv_ADDR_MTVAL =>
                 sv_csr_rdata <= sv_reg_MTVAL;
             when cv_ADDR_TSELECT =>
-                sv_csr_rdata <= (31 downto 1 => '0') & std_logic_vector(su_reg_TSELECT);
+                sv_csr_rdata <= (31 downto 3 => '0') & std_logic_vector(su_reg_TSELECT);
             when cv_ADDR_TDATA1 =>
                 sv_csr_rdata <= star_reg_TRIG(to_integer(su_reg_TSELECT)).v_tdata1;
             when cv_ADDR_TDATA2 =>
@@ -204,10 +204,10 @@ begin
         sv_val_MSCRATCH           <= sv_reg_MSCRATCH;
         sv_val_MTVAL              <= sv_reg_MTVAL;
         su_val_TSELECT            <= su_reg_TSELECT;
-        star_val_TRIG(0).v_tdata1 <= star_reg_TRIG(0).v_tdata1;
-        star_val_TRIG(0).v_tdata2 <= star_reg_TRIG(0).v_tdata2;
-        star_val_TRIG(1).v_tdata1 <= star_reg_TRIG(1).v_tdata1;
-        star_val_TRIG(1).v_tdata2 <= star_reg_TRIG(1).v_tdata2;
+        for ii in 0 to 7 loop
+            star_val_TRIG(ii).v_tdata1 <= star_reg_TRIG(ii).v_tdata1;
+            star_val_TRIG(ii).v_tdata2 <= star_reg_TRIG(ii).v_tdata2;
+        end loop;
         sv_val_DCSR               <= sv_reg_DCSR;
         sv_val_DPC                <= sv_reg_DPC;
         sv_val_DSCRATCH0          <= sv_reg_DSCRATCH0;
@@ -256,7 +256,7 @@ begin
                 end if;
             when cv_ADDR_TSELECT =>
                 if pil_csr_wen = cl_ENABLE then
-                    su_val_TSELECT <= unsigned(piv_csr_wdata(0 downto 0));
+                    su_val_TSELECT <= unsigned(piv_csr_wdata(2 downto 0));
                 end if;
             when cv_ADDR_TDATA1  =>
                 if pil_csr_wen = cl_ENABLE then
@@ -333,10 +333,10 @@ begin
             sv_reg_MSCRATCH           <= (others => '0');
             sv_reg_MTVAL              <= (others => '0');
             su_reg_TSELECT            <= (others => '0');
-            star_reg_TRIG(0).v_tdata1 <= cv_TDATA1;
-            star_reg_TRIG(0).v_tdata2 <= (others => '0');
-            star_reg_TRIG(1).v_tdata1 <= cv_TDATA1;
-            star_reg_TRIG(1).v_tdata2 <= (others => '0');
+            for ii in 0 to 7 loop
+                star_reg_TRIG(ii).v_tdata1 <= cv_TDATA1;
+                star_reg_TRIG(ii).v_tdata2 <= (others => '0');
+            end loop;
             sv_reg_DCSR               <= cv_DCSR;
             sv_reg_DPC                <= (others => '0');
             sv_reg_DSCRATCH0          <= (others => '0');
@@ -353,10 +353,10 @@ begin
             sv_reg_MSCRATCH           <= sv_val_MSCRATCH;
             sv_reg_MTVAL              <= sv_val_MTVAL;
             su_reg_TSELECT            <= su_val_TSELECT;
-            star_reg_TRIG(0).v_tdata1 <= star_val_TRIG(0).v_tdata1;
-            star_reg_TRIG(0).v_tdata2 <= star_val_TRIG(0).v_tdata2;
-            star_reg_TRIG(1).v_tdata1 <= star_val_TRIG(1).v_tdata1;
-            star_reg_TRIG(1).v_tdata2 <= star_val_TRIG(1).v_tdata2;
+            for ii in 0 to 7 loop
+                star_reg_TRIG(ii).v_tdata1 <= star_val_TRIG(ii).v_tdata1;
+                star_reg_TRIG(ii).v_tdata2 <= star_val_TRIG(ii).v_tdata2;
+            end loop;
             sv_reg_DCSR               <= sv_val_DCSR;
             sv_reg_DPC                <= sv_val_DPC;
             sv_reg_DSCRATCH0          <= sv_val_DSCRATCH0;
@@ -378,7 +378,7 @@ begin
         end case;
     end process proc_csr_op;
 
-    gen_trigger_match : for ii in 0 to 1 generate -- 2 trigger match
+    gen_trigger_match : for ii in 0 to 7 generate -- 2 trigger match
         stal_trigger_match(ii) <= cl_ENABLE when (star_reg_TRIG(ii).v_tdata1(2) = cl_ENABLE and (piv_exe_addr = star_reg_TRIG(ii).v_tdata2)) else
             cl_DISABLE;
     end generate;
@@ -387,7 +387,14 @@ begin
     pov_csr_modify         <= sv_csr_modify;
     pol_csr_illegal_access <= sl_illegal_write when pil_csr_wen = cl_ENABLE else
         sl_illegal_read;
-    pol_trigger_match      <= stal_trigger_match(1) or stal_trigger_match(0);
+    pol_trigger_match      <= stal_trigger_match(7) or
+        stal_trigger_match(6) or
+        stal_trigger_match(5) or
+        stal_trigger_match(4) or
+        stal_trigger_match(3) or
+        stal_trigger_match(2) or
+        stal_trigger_match(1) or
+        stal_trigger_match(0);
 
     potr_csr.v_MISA      <= sv_reg_MISA;
     potr_csr.v_MVENDORID <= gv_reg_MVENDORID;
@@ -414,7 +421,7 @@ begin
     
     potr_csr.v_MSCRATCH  <= sv_reg_MSCRATCH;
     potr_csr.v_MTVAL     <= sv_reg_MTVAL;
-    potr_csr.v_TSELECT   <= (31 downto 1 => '0') & std_logic_vector(su_reg_TSELECT);
+    potr_csr.v_TSELECT   <= (31 downto 3 => '0') & std_logic_vector(su_reg_TSELECT);
     potr_csr.v_TDATA1    <= star_reg_TRIG(to_integer(su_reg_TSELECT)).v_tdata1;
     potr_csr.v_TDATA2    <= star_reg_TRIG(to_integer(su_reg_TSELECT)).v_tdata2;
     potr_csr.v_DCSR      <= sv_reg_DCSR;

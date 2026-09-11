@@ -8,8 +8,10 @@ entity exe_unit is
     generic (
         gb_EXT_M               : boolean          := true;
         gb_EXT_C               : boolean          := true;
+        gv_reg_MVENDORID       : std_logic_vector := X"0000_0000";
         gv_reg_MARCHID         : std_logic_vector := X"0600_A033";
         gv_reg_MIMPID          : std_logic_vector := X"0001_0001";
+        gv_reg_MHARTID         : std_logic_vector := X"0000_0001";
         gb_RISCV_FORMAL_ALTOPS : boolean          := false
     );
     port (
@@ -153,10 +155,12 @@ begin
 
     inst_csr : entity work.csr_op_unit
         generic map(
-            gb_EXT_M       => gb_EXT_M,
-            gb_EXT_C       => gb_EXT_C,
-            gv_reg_MARCHID => gv_reg_MARCHID,
-            gv_reg_MIMPID  => gv_reg_MIMPID
+            gb_EXT_M         => gb_EXT_M,
+            gb_EXT_C         => gb_EXT_C,
+            gv_reg_MVENDORID => gv_reg_MVENDORID,
+            gv_reg_MARCHID   => gv_reg_MARCHID,
+            gv_reg_MIMPID    => gv_reg_MIMPID,
+            gv_reg_MHARTID   => gv_reg_MHARTID
         )
         port map(
             pil_clk                   => pil_clk,

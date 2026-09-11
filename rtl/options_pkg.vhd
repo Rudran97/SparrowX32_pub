@@ -17,8 +17,8 @@ package options_pkg is
     --- Default CSR settings ---
     constant cv_reg_MVENDORID : std_logic_vector(31 downto 0) := X"0000_0000";
     constant cv_reg_MARCHID   : std_logic_vector(31 downto 0) := X"0600_A033";
-    constant cv_reg_MIMPID    : std_logic_vector(31 downto 0) := X"0001_0090";
-    constant cv_reg_MHARTID   : std_logic_vector(31 downto 0) := X"0000_0001";
+    constant cv_reg_MIMPID    : std_logic_vector(31 downto 0) := X"0002_0000";
+    constant cv_reg_MHARTID   : std_logic_vector(31 downto 0) := X"0000_0000";
 
     --- RISCV FORMAL OPTIONS ---
     constant cb_RISCV_FORMAL        : boolean := false;
