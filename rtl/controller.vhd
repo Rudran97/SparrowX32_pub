@@ -472,7 +472,7 @@ begin
 		end if;
 	end process proc_debug_req_sync;
 
-	sl_exc_detect     <= pil_IALIGN_exc0 or pil_ILLINSN_exc2 or pil_BREAK_exc3 or pil_ECALL_exc11;
+	sl_exc_detect     <= pil_IALIGN_exc0 or pil_ILLINSN_exc2 or (pil_BREAK_exc3 and not pitr_csr_DCSR.l_ebreakm) or pil_ECALL_exc11;
 
 	proc_exc_fsm : process(pil_clk, pil_rst)
 	begin
