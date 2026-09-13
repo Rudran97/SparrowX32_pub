@@ -1006,7 +1006,8 @@ begin
         end process proc_exc;
     end generate;
 
-    sl_trap <= sl_IALIGN_exc0 or sl_ILLINSN_exc2 or sl_BREAK_exc3 or sl_ECALL_exc11;
+    -- Ignore trap if the debugger set dcsr.ebreakm = 1
+    sl_trap <= sl_IALIGN_exc0 or sl_ILLINSN_exc2 or (sl_BREAK_exc3 and not str_exe_csr.v_DCSR(15)) or sl_ECALL_exc11;
 
     sl_ctrl_en                     <= pil_run_prg;
     sv_ctrl_csr_MEPC               <= str_exe_csr.v_MEPC;
