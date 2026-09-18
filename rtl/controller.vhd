@@ -255,7 +255,7 @@ architecture rtl of controller is
     signal sv_exc_baddr                 : std_logic_vector(31 downto 0);
 
     --- controller internal modes ---
-    type t_ctrl_fsm is (reset_idle_st, normal_st, debug_baddr_st, pipe_flush_st, debug_st, step_st, reg_access_st, wait_ack_st);
+    type t_ctrl_fsm is (reset_idle_st, normal_st, debug_baddr_st, pipe_flush_st, debug_st, step_st, wait_sc_step_st, reg_access_st, wait_ack_st);
     signal st_ctrl_fsm                  : t_ctrl_fsm;
     signal sl_step                      : std_logic;
     signal sl_first_fetch               : std_logic;
@@ -1015,35 +1015,32 @@ begin
                         st_ctrl_fsm     <= reg_access_st;
                     elsif pil_debug_resumereq = cl_ENABLE then
                         sl_debug_havereset <= cl_DISABLE;
-
-                        --- In multicycle fetch, the step signal must be set regardless
-                        --  whether the DCSR.step is Enabled or Disabled since the step
-                        --  signal will enable the fetch interface module to fetch a
-                        --  new instruction.
-                        --- In signle cycle this is not needed here.
-                        if gb_MULTI_CYCLE_FETCH = true then
-                            sl_step        <= cl_ENABLE;
-                        end if;
-
                         sl_debug_mode      <= cl_DISABLE;
 
                         if pitr_csr_DCSR.l_step = cl_ENABLE then
                             sl_dcsr_wen       <= cl_ENABLE;
                             slv_dcsr_cause    <= ctr_DEBUG_cause.v_step;
-
-                            --- In single cycle fetch the step signal must only be set
-                            --- when DCSR.step is Enabled.
-                            if gb_MULTI_CYCLE_FETCH = false then
-                                sl_step       <= cl_ENABLE;
+                            sv_debug_baddr    <= piv_csr_DPC;
+                            st_ctrl_fsm       <= wait_sc_step_st;
+                        else
+                            --- In multicycle fetch, the step signal must be set regardless
+                            --  whether the DCSR.step is Enabled or Disabled since the step
+                            --  signal will enable the fetch interface module to fetch a
+                            --  new instruction.
+                            --- In signle cycle this is not needed here.
+                            if gb_MULTI_CYCLE_FETCH = true then
+                                sl_step        <= cl_ENABLE;
                             end if;
 
-                            st_ctrl_fsm       <= step_st;
-                        else
                             sl_ignore_irq_after_debug  <= cl_ENABLE;
                             sv_debug_baddr             <= piv_csr_DPC;
                             st_ctrl_fsm                <= normal_st;
                         end if;
                     end if;
+                when wait_sc_step_st  =>
+                    sl_exc_pipe_flush <= cl_ENABLE;
+                    sl_step           <= cl_ENABLE;
+                    st_ctrl_fsm       <= step_st;
                 when step_st        =>
                     if pil_inst_raised_trap = cl_ENABLE then
                         sl_debug_step_branch_taken <= cl_ENABLE;
