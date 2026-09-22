@@ -165,6 +165,7 @@ entity controller is
         piv_ma_baddr                : in std_logic_vector(31 downto 0);
 
         --- WB stage ---
+        pil_ebreak_debug_req        : in std_logic; -- ebreak isnt at wb during dcsr.ebreakm = 1
         pil_wb_insn_retire          : in std_logic;
         pil_wb_is_branch_inst_copy  : in std_logic;
         pil_wb_is_valid_inst        : in std_logic;
@@ -273,7 +274,9 @@ architecture rtl of controller is
     signal sl_debug_mode_req            : std_logic; -- '1' indicates a request to enter debug mode is made
     signal sl_debug_req_pending         : std_logic; -- '1' indicates pending debug req
     signal sl_debug_trigger_match       : std_logic; -- '1' indicates trigger match
+    signal sl_ebreak_debug_req          : std_logic; -- '1' indiaces a debug request due to ebreak instruction when dcsr.ebreakm = 1
     signal sv_debug_baddr               : std_logic_vector(31 downto 0);
+    signal sv_ebreak_debug_baddr        : std_logic_vector(31 downto 0);
 
     signal sl_access_req                : std_logic;
     signal sv_access_regno              : std_logic_vector(11 downto 0);
@@ -440,7 +443,7 @@ begin
         end if;
     end process proc_clocked_irq;
 
-    sl_debug_mode_req <= pil_debug_haltreq or pil_trigger_match or (pitr_csr_DCSR.l_ebreakm and pil_BREAK_exc3);
+    sl_debug_mode_req <= pil_debug_haltreq or pil_trigger_match or sl_ebreak_debug_req;
 
     proc_debug_req_sync : process(pil_clk, pil_rst)
     begin
@@ -472,7 +475,7 @@ begin
         end if;
     end process proc_debug_req_sync;
 
-    sl_exc_detect     <= pil_IALIGN_exc0 or pil_ILLINSN_exc2 or (pil_BREAK_exc3 and not pitr_csr_DCSR.l_ebreakm) or pil_ECALL_exc11;
+    sl_exc_detect     <= pil_IALIGN_exc0 or pil_ILLINSN_exc2 or pil_BREAK_exc3 or pil_ECALL_exc11;
 
     proc_exc_fsm : process(pil_clk, pil_rst)
     begin
@@ -495,6 +498,8 @@ begin
             sv_dpc                     <= (others => '0');
             sl_debug_mode              <= cl_DISABLE;
             sl_debug_havereset         <= cl_ENABLE;
+            sl_ebreak_debug_req        <= cl_DISABLE;
+            sv_ebreak_debug_baddr      <= (others => '0');
             sv_debug_baddr             <= gv_PC_ORIGIN;
             sl_access_req              <= cl_DISABLE;
             sv_access_regno            <= (others => '0');
@@ -612,39 +617,51 @@ begin
                             when exc_detect_st =>
                                 sl_ignore_irq_regfile        <= cl_DISABLE;
                                 sl_ignore_branch_at_exe      <= cl_DISABLE;
+                                sl_ebreak_debug_req          <= cl_DISABLE;
 
                                 if sl_exc_detect = cl_ENABLE then
-                                    --- Exceptions ---
-                                    sl_exc_pending            <= cl_ENABLE;
-                                    sl_mepc_wen               <= cl_ENABLE;
-                                    sv_mepc                   <= piv_exc_epc; -- Save the current PC
-                                    sl_mtval_wen              <= cl_ENABLE;
-                                    sv_mtval                  <= piv_exc_inst; -- Save the Zero extended lower 16 LSB of ebreak inst
+                                    if (pil_BREAK_exc3 and pitr_csr_DCSR.l_ebreakm) = cl_ENABLE then
+                                        --- Debug request due to ebreak and dcsr.ebreakm = 1 ---
+                                        sl_exc_pending            <= cl_ENABLE;
+                                        sl_exc_pipe_flush         <= cl_ENABLE;
+                                        sl_exc_irq_critical_phase <= cl_ENABLE;
+                                        sl_ebreak_debug_req       <= cl_ENABLE;
+                                        sv_ebreak_debug_baddr     <= piv_exc_epc;
 
-                                    sl_mcause_wen             <= cl_ENABLE;
-                                    str_exc_cause.l_INT       <= cl_DISABLE;
-                                    sl_mstatus_wen            <= cl_ENABLE;
-                                    str_mstatus.l_MPIE        <= pitr_csr_MSTATUS.l_MIE; -- Save MIE state
-                                    str_mstatus.l_MIE         <= cl_DISABLE;
+                                        st_exc_fsm                <= set_mepc_st;
+                                    else
+                                        --- Exceptions ---
+                                        sl_exc_pending            <= cl_ENABLE;
+                                        sl_mepc_wen               <= cl_ENABLE;
+                                        sv_mepc                   <= piv_exc_epc; -- Save the current PC
+                                        sl_mtval_wen              <= cl_ENABLE;
+                                        sv_mtval                  <= piv_exc_inst; -- Save the Zero extended lower 16 LSB of ebreak inst
 
-                                    st_exc_fsm                <= set_mepc_st;
-                                    sl_exc_pipe_flush         <= cl_ENABLE;
-                                    sl_exc_irq_critical_phase <= cl_ENABLE;
+                                        sl_mcause_wen             <= cl_ENABLE;
+                                        str_exc_cause.l_INT       <= cl_DISABLE;
+                                        sl_mstatus_wen            <= cl_ENABLE;
+                                        str_mstatus.l_MPIE        <= pitr_csr_MSTATUS.l_MIE; -- Save MIE state
+                                        str_mstatus.l_MIE         <= cl_DISABLE;
 
-                                    if pil_ECALL_exc11 = cl_ENABLE then
-                                        str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_ecall_insn; -- ECALL Instruction
-                                    end if;
+                                        st_exc_fsm                <= set_mepc_st;
+                                        sl_exc_pipe_flush         <= cl_ENABLE;
+                                        sl_exc_irq_critical_phase <= cl_ENABLE;
 
-                                    if pil_IALIGN_exc0 = cl_ENABLE then
-                                        str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_insn_addr_misaligned; -- Instruction-address misaligned
-                                    end if;
+                                        if pil_ECALL_exc11 = cl_ENABLE then
+                                            str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_ecall_insn; -- ECALL Instruction
+                                        end if;
 
-                                    if pil_ILLINSN_exc2 = cl_ENABLE then
-                                        str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_illegal_insn; -- Illegal Instruction
-                                    end if;
+                                        if pil_IALIGN_exc0 = cl_ENABLE then
+                                            str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_insn_addr_misaligned; -- Instruction-address misaligned
+                                        end if;
 
-                                    if pil_BREAK_exc3 = cl_ENABLE then
-                                        str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_ebreak_insn; -- EBREAK Instruction
+                                        if pil_ILLINSN_exc2 = cl_ENABLE then
+                                            str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_illegal_insn; -- Illegal Instruction
+                                        end if;
+
+                                        if pil_BREAK_exc3 = cl_ENABLE then
+                                            str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_ebreak_insn; -- EBREAK Instruction
+                                        end if;
                                     end if;
                                 else
                                     --- Machine Interrupts ---
@@ -687,7 +704,7 @@ begin
                                                 if pil_exe_is_csr_inst = cl_ENABLE then
                                                     sl_csr_halt_bypass <= cl_ENABLE;
                                                 end if;
-                                                
+
                                                 sl_exc_pipe_flush         <= cl_ENABLE;
                                                 sl_exc_irq_critical_phase <= cl_ENABLE;
                                             end if;
@@ -819,7 +836,17 @@ begin
                                     st_exc_fsm                <= handle_exc_st;
                                 end if;
                             when handle_exc_st =>
-                                if pil_is_mret = cl_ENABLE then
+                                if sl_ebreak_debug_req = cl_ENABLE then
+                                    --- This is a special case when ebreak instruction is encountered during dcsr.ebreakm = 1
+                                    --- the core never enters the exception_handler. So, once a resume request is received, the
+                                    --- debugger would set the st_exc_fsm back to exc_detect_st.
+                                    sl_irq_regfile_sel     <= cl_DISABLE;
+                                    sl_ignore_irq_regfile  <= cl_ENABLE;
+                                    sl_intr_critical_phase <= cl_DISABLE;
+
+                                    sl_exc_pending     <= cl_DISABLE;
+                                    -- st_exc_fsm         <= exc_detect_st;
+                                elsif pil_is_mret = cl_ENABLE then
                                     sl_exc_pipe_flush  <= cl_ENABLE;
                                     str_mstatus.l_MIE  <= pitr_csr_mstatus.l_MPIE;
                                     str_mstatus.l_MPIE <= cl_ENABLE;
@@ -841,12 +868,13 @@ begin
 
                                     sl_mcause_wen            <= cl_ENABLE;
                                     str_exc_cause.l_INT      <= cl_DISABLE;
-                                    sl_mstatus_wen            <= cl_ENABLE;
-                                    str_mstatus.l_MPIE        <= pitr_csr_MSTATUS.l_MIE; -- Save MIE state
-                                    str_mstatus.l_MIE         <= cl_DISABLE;
+                                    sl_mstatus_wen           <= cl_ENABLE;
+                                    str_mstatus.l_MPIE       <= pitr_csr_MSTATUS.l_MIE; -- Save MIE state
+                                    str_mstatus.l_MIE        <= cl_DISABLE;
 
-                                    st_exc_fsm               <= set_mepc_st;
-                                    sl_exc_pipe_flush        <= cl_ENABLE;
+                                    st_exc_fsm                <= set_mepc_st;
+                                    sl_exc_pipe_flush         <= cl_ENABLE;
+                                    sl_exc_irq_critical_phase <= cl_ENABLE;
 
                                     if pil_ECALL_exc11 = cl_ENABLE then
                                         str_exc_cause.v_EXC_CODE <= ctr_EXC_cause.v_ecall_insn; -- ECALL Instruction
@@ -901,87 +929,94 @@ begin
                         st_ctrl_fsm       <= debug_st;
                     end if;
 
-                    -- Since the debug req is an async signal, the logic to store the correct DPC and debug_baddr is
-                    -- similar to the Machine Interrupts.
-                    if (pil_ma_is_branch_inst_copy = cl_ENABLE or pil_wb_is_branch_inst_copy = cl_ENABLE) then
-                        sl_dpc_wen <= cl_ENABLE;
+                    if sl_ebreak_debug_req = cl_ENABLE then
+                        sl_dpc_wen     <= cl_ENABLE;
+                        sv_dpc         <= sv_ebreak_debug_baddr;
+                        sv_debug_baddr <= sv_ebreak_debug_baddr;
+                        report "DEBUG: ebreak INSTRUCTION AT " & to_hstring(sv_ebreak_debug_baddr) severity note;
                     else
-                        sl_dpc_wen <= not pil_idexe_nop_inst;
-                    end if;
-
-                    if pil_ma_is_branch_inst_copy = cl_ENABLE and pil_ma_branch_taken = cl_ENABLE and pil_ma_is_valid_inst = cl_ENABLE then
-                        -- If a branch was taken in the last instruction (i.e. the instruction is ma stage) then
-                        -- the current instruction in exe stage is invalid. So we save the ma branch address in the dpc.
-                        sv_dpc         <= piv_ma_addr;
-                        sv_debug_baddr <= piv_ma_addr;
-                        report "BRANCH INSTRUCTION AT MA" severity note;
-                    elsif pil_wb_is_branch_inst_copy = cl_ENABLE and pil_wb_branch_taken = cl_ENABLE and pil_wb_is_valid_inst = cl_ENABLE then
-                        -- If a branch was taken in the 2nd last instruction (i.e. the instruction is already in wb stage) then
-                        -- the current instruction in exe stage is invalid. So we save the wb branch address in the dpc.
-                        sv_dpc         <= piv_wb_addr;
-                        sv_debug_baddr <= piv_wb_addr;
-                        report "BRANCH INSTRUCTION AT WB" severity note;
-                    elsif pil_is_mret_copy = cl_ENABLE then
-                        -- If there is an mret instruction at MA stage, it has not updated the mstatus register yet.
-                        sv_dpc         <= piv_ma_addr;
-                        sv_debug_baddr <= piv_ma_addr;
-                        report "MRET AT MA" severity note;
-                    elsif pil_exe_is_branch_inst_copy = cl_ENABLE then
-                        -- If the current instruction is a branch instruction, save the current exe_addr as dpc.
-                        sv_dpc                  <= piv_exe_addr;
-                        sv_debug_baddr          <= piv_exe_addr;
-                        sl_ignore_branch_at_exe <= cl_ENABLE; --- If interrupt is triggered and the current instruction at exe
-                                                                --  is a branch/jump instruction then branch_taken signal will be
-                                                                --  forced cleared. This is necessary or else the branch address
-                                                                --  will overwrite the interrupt vector address.
-                        report "BRANCH INSTRUCTION AT EXE" severity note;
-                    elsif sl_is_csr_inst_hold = cl_ENABLE then
-                        -- If the current instruction at exe stage is a csr instruction, it cannot be flushed since it would update
-                        -- the GPR and CSRs. In that case set the return address to the next instruction i.e. piv_id_addr.
-                        sv_dpc         <= piv_id_addr;
-                        sv_debug_baddr <= piv_id_addr;
-
-                        -- If DPC is not a branch instruction, then the core will execute the next instruction in pipeline.
-                        -- Thus the rvfi_intr signal must be disabled.
-                        sl_rvfi_intr      <= cl_DISABLE;
-                    else
-                        -- When ifid_ready is ENABLE then exc_pipe_flush will insert a bubble in the next clock cycle. This means
-                        -- the instruction in the exe_addr must be executed again after returning from the interrupt handler.
-                        if pil_exe_is_valid_inst = cl_ENABLE and pil_idexe_nop_inst = cl_DISABLE then
-                            sv_dpc         <= piv_exe_addr;
-                            sv_debug_baddr <= piv_exe_addr;
-                            report "INSTRUCTION AT EXE" severity note;
+                        -- Since the debug req is an async signal, the logic to store the correct DPC and debug_baddr is
+                        -- similar to the Machine Interrupts.
+                        if (pil_ma_is_branch_inst_copy = cl_ENABLE or pil_wb_is_branch_inst_copy = cl_ENABLE) then
+                            sl_dpc_wen <= cl_ENABLE;
                         else
-                            if pil_ifid_nop_inst = cl_DISABLE then
-                                --- dpc will only be updated if the insruction at id stage is not a nop
-                                sl_dpc_wen <= cl_ENABLE;
-                            end if;
+                            sl_dpc_wen <= not pil_idexe_nop_inst;
+                        end if;
 
+                        if pil_ma_is_branch_inst_copy = cl_ENABLE and pil_ma_branch_taken = cl_ENABLE and pil_ma_is_valid_inst = cl_ENABLE then
+                            -- If a branch was taken in the last instruction (i.e. the instruction is ma stage) then
+                            -- the current instruction in exe stage is invalid. So we save the ma branch address in the dpc.
+                            sv_dpc         <= piv_ma_addr;
+                            sv_debug_baddr <= piv_ma_addr;
+                            report "BRANCH INSTRUCTION AT MA" & to_hstring(piv_ma_addr) severity note;
+                        elsif pil_wb_is_branch_inst_copy = cl_ENABLE and pil_wb_branch_taken = cl_ENABLE and pil_wb_is_valid_inst = cl_ENABLE then
+                            -- If a branch was taken in the 2nd last instruction (i.e. the instruction is already in wb stage) then
+                            -- the current instruction in exe stage is invalid. So we save the wb branch address in the dpc.
+                            sv_dpc         <= piv_wb_addr;
+                            sv_debug_baddr <= piv_wb_addr;
+                            report "BRANCH INSTRUCTION AT WB" & to_hstring(piv_wb_addr) severity note;
+                        elsif pil_is_mret_copy = cl_ENABLE then
+                            -- If there is an mret instruction at MA stage, it has not updated the mstatus register yet.
+                            sv_dpc         <= piv_ma_addr;
+                            sv_debug_baddr <= piv_ma_addr;
+                            report "MRET AT MA" & to_hstring(piv_ma_addr) severity note;
+                        elsif pil_exe_is_branch_inst_copy = cl_ENABLE then
+                            -- If the current instruction is a branch instruction, save the current exe_addr as dpc.
+                            sv_dpc                  <= piv_exe_addr;
+                            sv_debug_baddr          <= piv_exe_addr;
+                            sl_ignore_branch_at_exe <= cl_ENABLE; --- If interrupt is triggered and the current instruction at exe
+                                                                    --  is a branch/jump instruction then branch_taken signal will be
+                                                                    --  forced cleared. This is necessary or else the branch address
+                                                                    --  will overwrite the interrupt vector address.
+                            report "BRANCH INSTRUCTION AT EXE" & to_hstring(piv_exe_addr) severity note;
+                        elsif sl_is_csr_inst_hold = cl_ENABLE then
+                            -- If the current instruction at exe stage is a csr instruction, it cannot be flushed since it would update
+                            -- the GPR and CSRs. In that case set the return address to the next instruction i.e. piv_id_addr.
                             sv_dpc         <= piv_id_addr;
                             sv_debug_baddr <= piv_id_addr;
-                            report "INSTRUCTION AT ID" severity note;
+
+                            -- If DPC is not a branch instruction, then the core will execute the next instruction in pipeline.
+                            -- Thus the rvfi_intr signal must be disabled.
+                            sl_rvfi_intr      <= cl_DISABLE;
+                        else
+                            -- When ifid_ready is ENABLE then exc_pipe_flush will insert a bubble in the next clock cycle. This means
+                            -- the instruction in the exe_addr must be executed again after returning from the interrupt handler.
+                            if pil_exe_is_valid_inst = cl_ENABLE and pil_idexe_nop_inst = cl_DISABLE then
+                                sv_dpc         <= piv_exe_addr;
+                                sv_debug_baddr <= piv_exe_addr;
+                                report "INSTRUCTION AT EXE" severity note;
+                            else
+                                if pil_ifid_nop_inst = cl_DISABLE then
+                                    --- dpc will only be updated if the insruction at id stage is not a nop
+                                    sl_dpc_wen <= cl_ENABLE;
+                                end if;
+
+                                sv_dpc         <= piv_id_addr;
+                                sv_debug_baddr <= piv_id_addr;
+                                report "INSTRUCTION AT ID" severity note;
+                            end if;
+
+                            if st_exc_fsm = irq_pending_st then
+                                --- If a debug request has occurred while the core was in exc/irq_pending state, then DPC = MEPC ---
+                                sv_dpc         <= piv_csr_MEPC;
+                                sv_debug_baddr <= piv_csr_MEPC;
+                                -- Make sure that the irq_regile_sel is disabled. This is necessary if the user wants to "step" in
+                                -- debug mode. Since the core cannot restore these signals until the controller reaches the normal_st,
+                                -- it is necessary to set these signals correctly. 
+                                sl_irq_regfile_sel     <= cl_DISABLE;
+                                sl_ignore_irq_regfile  <= cl_ENABLE;
+                                report "Debug during irq_pending, setting dpc = mepc" severity note;
+                            end if;
+
+                            -- If DPC is not a branch instruction, then the core will execute the next instruction in pipeline.
+                            -- Thus the rvfi_intr signal must be disabled.
+                            sl_rvfi_intr      <= cl_DISABLE;
                         end if;
 
-                        if st_exc_fsm = irq_pending_st then
-                            --- If a debug request has occurred while the core was in exc/irq_pending state, then DPC = MEPC ---
-                            sv_dpc         <= piv_csr_MEPC;
-                            sv_debug_baddr <= piv_csr_MEPC;
-                            -- Make sure that the irq_regile_sel is disabled. This is necessary if the user wants to "step" in
-                            -- debug mode. Since the core cannot restore these signals until the controller reaches the normal_st,
-                            -- it is necessary to set these signals correctly. 
-                            sl_irq_regfile_sel     <= cl_DISABLE;
-                            sl_ignore_irq_regfile  <= cl_ENABLE;
-                            report "Debug during irq_pending, setting dpc = mepc" severity note;
+                        if sl_intr_critical_phase = cl_ENABLE then
+                            sl_intr_critical_phase <= cl_DISABLE;
+                            sl_rvfi_intr           <= cl_ENABLE; -- Keep the rvfi_intr enabled when entering debug mode from exc/irq critical phase
                         end if;
-
-                        -- If DPC is not a branch instruction, then the core will execute the next instruction in pipeline.
-                        -- Thus the rvfi_intr signal must be disabled.
-                        sl_rvfi_intr      <= cl_DISABLE;
-                    end if;
-
-                    if sl_intr_critical_phase = cl_ENABLE then
-                        sl_intr_critical_phase <= cl_DISABLE;
-                        sl_rvfi_intr           <= cl_ENABLE; -- Keep the rvfi_intr enabled when entering debug mode from exc/irq critical phase
                     end if;
                 when pipe_flush_st  =>
                     sl_is_csr_inst_hold <= cl_DISABLE;
@@ -1016,6 +1051,11 @@ begin
                     elsif pil_debug_resumereq = cl_ENABLE then
                         sl_debug_havereset <= cl_DISABLE;
                         sl_debug_mode      <= cl_DISABLE;
+
+                        if sl_ebreak_debug_req = cl_ENABLE then
+                            sl_ebreak_debug_req <= cl_DISABLE;
+                            st_exc_fsm          <= exc_detect_st;
+                        end if;
 
                         if pitr_csr_DCSR.l_step = cl_ENABLE then
                             sl_dcsr_wen       <= cl_ENABLE;
@@ -1078,12 +1118,20 @@ begin
                     end if;
 
                     if pil_wb_insn_retire = cl_ENABLE then
-                        -- only use the branched address when the branch (or mret)
+                        -- Only use the branched address when the branch (or mret)
                         -- is taken after execution else load the next_addr
                         if sl_debug_step_branch_taken = cl_DISABLE then
-                            sv_debug_baddr <= piv_wb_next_addr;
                             sl_dpc_wen     <= cl_ENABLE;
                             sv_dpc         <= piv_wb_next_addr;
+                            sv_debug_baddr <= piv_wb_next_addr;
+                        end if;
+
+                        -- Stay in the same address as the current instruction is ebreak
+                        -- and dcsr.ebreakm = 1.
+                        if pil_ebreak_debug_req = cl_ENABLE then
+                            sl_dpc_wen     <= cl_ENABLE;
+                            sv_dpc         <= piv_wb_addr;
+                            sv_debug_baddr <= piv_wb_addr;
                         end if;
 
                         -- Once the instruction has been executed, it is safe to disable the
@@ -1128,7 +1176,7 @@ begin
     sv_exc_handler_addr <= fv_exc_addr(mtvec => pitr_csr_MTVEC, mcause => str_exc_cause, firq_addr => piv_fast_irq_vect);
 
     sl_exc_ben   <= sl_exc_pipe_flush;
-    
+
     --- The exc_baddr will be mret_addr when it is either a mret instruction or the exc_fsm state is still in the pending state.
     --- During this state, the sl_exc_pipe_flush is held high i.e. the core is kept stalled till the IRQ is held low by the source.
     --- This will prevent false interrupt signals due to interrupt source not getting cleared.
@@ -1140,7 +1188,7 @@ begin
         sv_debug_baddr when sl_is_in_debug_mode = cl_ENABLE else
         sv_mret_addr when (pil_is_mret = cl_ENABLE or sl_irq_pending = cl_ENABLE or sl_exc_mret = cl_ENABLE) else
         sv_exc_handler_addr;
-        
+
     --------------------------------------------------------------------------------------------
     -------------------------------------- OUTPUT ----------------------------------------------
     --------------------------------------------------------------------------------------------
@@ -1157,7 +1205,7 @@ begin
         cl_DISABLE;
     pol_id_stall            <= sl_id_stall;
     pol_exe_stall           <= sl_exe_stall;
-    
+
     pol_ifid_nop_inst       <= sl_ifid_nop_inst;
 
     pov_if_baddr            <= sv_ma_baddr;

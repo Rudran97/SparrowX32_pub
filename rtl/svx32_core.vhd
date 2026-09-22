@@ -342,7 +342,8 @@ architecture rtl of svx32_core is
     signal sl_ctrl_ma_branch_taken         : std_logic;
     signal sl_ctrl_ma_is_branch_inst       : std_logic;
     signal sv_ctrl_ma_baddr                : std_logic_vector(31 downto 0);
-    signal sl_wb_insn_retire               : std_logic;
+    signal sl_ctrl_wb_ebreak_debug_req     : std_logic;
+    signal sl_ctrl_wb_insn_retire          : std_logic;
     signal sl_ctrl_wb_is_branch_inst_copy  : std_logic;
     signal sl_ctrl_wb_is_valid_inst        : std_logic;
     signal sl_ctrl_wb_branch_taken         : std_logic;
@@ -876,6 +877,7 @@ begin
     str_mawb_stage_reg_in.t_wb_ctrl             <= str_exema_stage_reg_out.t_wb_ctrl;
     str_mawb_stage_reg_in.l_is_compressed       <= str_exema_stage_reg_out.l_is_compressed;
     str_mawb_stage_reg_in.l_is_branch_inst_copy <= str_exema_stage_reg_out.l_is_branch_inst_copy;
+    str_mawb_stage_reg_in.l_is_ebreak           <= str_exema_stage_reg_out.t_ma_ctrl.l_is_ebreak;
     str_mawb_stage_reg_in.l_inst_tag            <= str_exema_stage_reg_out.l_inst_tag;
     str_mawb_stage_reg_in.l_irq_regfile_sel     <= str_exema_stage_reg_out.l_irq_regfile_sel and not sl_ctrl_ignore_irq_regfile;
     str_mawb_stage_reg_in.l_illegal_inst        <= str_exema_stage_reg_out.l_illegal_inst;
@@ -1053,7 +1055,8 @@ begin
     sl_ctrl_ma_branch_taken         <= str_exema_stage_reg_out.l_branch_taken;
     sl_ctrl_ma_is_branch_inst       <= str_exema_stage_reg_out.t_ma_ctrl.l_is_branch_inst;
     sv_ctrl_ma_baddr                <= str_exema_stage_reg_out.v_branch_addr;
-    sl_wb_insn_retire               <= str_mawb_stage_reg_out.l_inst_tag;
+    sl_ctrl_wb_ebreak_debug_req     <= str_mawb_stage_reg_out.l_is_ebreak and str_exe_csr.v_DCSR(15);
+    sl_ctrl_wb_insn_retire          <= str_mawb_stage_reg_out.l_inst_tag;
     sl_ctrl_wb_is_branch_inst_copy  <= str_mawb_stage_reg_out.l_is_branch_inst_copy;
     sl_ctrl_wb_is_valid_inst        <= str_mawb_stage_reg_out.l_inst_tag;
     sl_ctrl_wb_branch_taken         <= str_mawb_stage_reg_out.l_branch_taken;
@@ -1171,7 +1174,8 @@ begin
             pil_ma_branch_taken         => sl_ctrl_ma_branch_taken,
             pil_ma_is_branch_inst       => sl_ctrl_ma_is_branch_inst,
             piv_ma_baddr                => sv_ctrl_ma_baddr,
-            pil_wb_insn_retire          => sl_wb_insn_retire,
+            pil_ebreak_debug_req        => sl_ctrl_wb_ebreak_debug_req,
+            pil_wb_insn_retire          => sl_ctrl_wb_insn_retire,
             pil_wb_is_branch_inst_copy  => sl_ctrl_wb_is_branch_inst_copy,
             pil_wb_is_valid_inst        => sl_ctrl_wb_is_valid_inst,
             pil_wb_branch_taken         => sl_ctrl_wb_branch_taken,
