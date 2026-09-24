@@ -339,6 +339,10 @@ architecture rtl of svx32_core is
     signal sl_ctrl_ma_is_valid_inst        : std_logic;
     signal sv_ctrl_ma_addr                 : std_logic_vector(31 downto 0);
     signal sl_ctrl_inst_raised_trap        : std_logic;
+    signal sl_ctrl_ma_is_ebreak            : std_logic;
+    signal sl_ctrl_ma_is_ecall             : std_logic;
+    signal sl_ctrl_ma_is_ill_insn          : std_logic;
+    signal sv_ctrl_ma_exc_inst             : std_logic_vector(31 downto 0);
     signal sl_ctrl_ma_branch_taken         : std_logic;
     signal sl_ctrl_ma_is_branch_inst       : std_logic;
     signal sv_ctrl_ma_baddr                : std_logic_vector(31 downto 0);
@@ -940,14 +944,13 @@ begin
             sl_BREAK_exc3      <= cl_DISABLE;
             sl_ECALL_exc11     <= cl_DISABLE;
             sv_exc_epc         <= (others => '0');
-            sv_exc_inst        <= (others => '0');
+            sv_exc_inst        <= str_idexe_stage_reg_out.v_compressed_inst; -- v_compressed_inst always has the 16 LSB of the actual instruction
 
             --- If a branch was initiated in the ma stage then do not check for exceptions as the current instruction in the pipeline will be flushed ---
             if (sl_ctrl_if_ben = cl_DISABLE) then
                 if str_idexe_stage_reg_out.t_ma_ctrl.l_is_ebreak = cl_ENABLE then
                     sl_BREAK_exc3      <= cl_ENABLE;
                     sv_exc_epc         <= str_idexe_stage_reg_out.v_addr;
-                    sv_exc_inst        <= str_idexe_stage_reg_out.v_compressed_inst; -- v_compressed_inst always has the 16 LSB of the actual instruction
                 elsif str_idexe_stage_reg_out.t_ma_ctrl.l_is_ecall = cl_ENABLE then
                     sl_ECALL_exc11     <= cl_ENABLE;
                     sv_exc_epc         <= str_idexe_stage_reg_out.v_addr;
@@ -1052,6 +1055,10 @@ begin
     sl_ctrl_ma_is_valid_inst        <= str_exema_stage_reg_out.l_inst_tag;
     sv_ctrl_ma_addr                 <= str_exema_stage_reg_out.v_addr;
     sl_ctrl_inst_raised_trap        <= str_exema_stage_reg_out.l_trap;
+    sl_ctrl_ma_is_ebreak            <= str_exema_stage_reg_out.t_ma_ctrl.l_is_ebreak;
+    sl_ctrl_ma_is_ecall             <= str_exema_stage_reg_out.t_ma_ctrl.l_is_ecall;
+    sl_ctrl_ma_is_ill_insn          <= str_exema_stage_reg_out.l_illegal_inst;
+    sv_ctrl_ma_exc_inst             <= str_exema_stage_reg_out.v_compressed_inst;
     sl_ctrl_ma_branch_taken         <= str_exema_stage_reg_out.l_branch_taken;
     sl_ctrl_ma_is_branch_inst       <= str_exema_stage_reg_out.t_ma_ctrl.l_is_branch_inst;
     sv_ctrl_ma_baddr                <= str_exema_stage_reg_out.v_branch_addr;
@@ -1171,6 +1178,10 @@ begin
             pil_ma_is_valid_inst        => sl_ctrl_ma_is_valid_inst,
             piv_ma_addr                 => sv_ctrl_ma_addr,
             pil_inst_raised_trap        => sl_ctrl_inst_raised_trap,
+            pil_ma_is_ebreak            => sl_ctrl_ma_is_ebreak,
+            pil_ma_is_ecall             => sl_ctrl_ma_is_ecall,
+            pil_ma_is_ill_insn          => sl_ctrl_ma_is_ill_insn,
+            piv_ma_exc_inst             => sv_ctrl_ma_exc_inst,
             pil_ma_branch_taken         => sl_ctrl_ma_branch_taken,
             pil_ma_is_branch_inst       => sl_ctrl_ma_is_branch_inst,
             piv_ma_baddr                => sv_ctrl_ma_baddr,
