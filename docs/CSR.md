@@ -169,7 +169,7 @@ Address: `0x7A0`
 
 Reset  : `0x0000_0000`
 
-Accessible in Debug mode and M-mode. Writing to `tselect` register would select the corresponding trigger module. Each trigger module has its own `tdata1`, `tdata2` and `tdata3` registers. Currently only two trigger modules are supported i.e., valid values for `tselect` are `0` and `1`.
+Accessible in Debug mode and M-mode. Writing to `tselect` register would select the corresponding trigger module. Each trigger module has its own `tdata1`, `tdata2` and `tdata3` registers. Currently eight trigger modules are supported i.e., valid values for `tselect` are `0` and `7`.
 
 For more info follow RISC-V Debug Specification version 1.0.
 
